@@ -3,7 +3,7 @@ import cv2 as cv
 from matplotlib import pyplot as plt
 
 
-raw_img = cv.imread('tricky_backpack_image.jpg')
+raw_img = cv.imread('media/approach_table_leg_1.jpg')
 downscaling_factor = 32
 
 assert raw_img is not None, "file could not be read, check with os.path.exists()"
@@ -15,8 +15,9 @@ img = cv.resize(raw_img, (new_width, new_height))
 mask = np.zeros(img.shape[:2],np.uint8)
 bgdModel = np.zeros((1,65),np.float64)
 fgdModel = np.zeros((1,65),np.float64)
-rect = (2,2,1500//downscaling_factor,1500//downscaling_factor)
-cv.grabCut(img,mask,rect,bgdModel,fgdModel,3,cv.GC_INIT_WITH_RECT)
+rect = (1000//downscaling_factor,2,3980//downscaling_factor,1400//downscaling_factor)
+cv.grabCut(img,mask,rect,bgdModel,fgdModel,1,cv.GC_INIT_WITH_RECT)
 mask2 = np.where((mask==2)|(mask==0),0,1).astype('uint8')
 img = img*mask2[:,:,np.newaxis]
+cv.rectangle(img, rect[0:2], rect[2:4], (255,0,0), 2)
 plt.imshow(img),plt.colorbar(),plt.show()
