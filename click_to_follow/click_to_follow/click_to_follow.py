@@ -75,18 +75,15 @@ class ClickTracker(Node):
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function 
         if not self.cv_image is None:
-            self.binary_image = cv2.inRange(self.cv_image, (self.blue_lower_bound,self.green_lower_bound,self.red_lower_bound), (self.blue_upper_bound,self.green_upper_bound,self.red_upper_bound))
-            print(self.cv_image.shape)
-            moments = cv2.moments(self.binary_image)
-            if moments['m00'] != 0:
-                self.center_x, self.center_y = moments['m10']/moments['m00'], moments['m01']/moments['m00']
-                # normalize self.center_x
-                norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]
-                # create message pose (stopped, else move towards target)
-                msg_cmd = Twist()
-                if self.should_move is True:
-                    msg_cmd.linear.x = 0.1
-                    msg_cmd.angular.z = -norm_x_pose
+            self.binary_image = np.zeros((self.cv_image.shape[0], self.cv_image.shape[1]))
+            self.center_x, self.center_y = 20, 60
+            # normalize self.center_x
+            norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]
+            # create message pose (stopped, else move towards target)
+            msg_cmd = Twist()
+            if self.should_move is True:
+                msg_cmd.linear.x = 0.1
+                msg_cmd.angular.z = -norm_x_pose
                 self.pub.publish(msg_cmd)
             cv2.imshow('video_window', self.cv_image)
             cv2.imshow('binary_window', self.binary_image)
@@ -95,13 +92,13 @@ class ClickTracker(Node):
             cv2.waitKey(5)
 
 if __name__ == '__main__':
-    node = BallTracker("/camera/image_raw")
+    node = ClickTracker("/camera/image_raw")
     node.run()
 
 
 def main(args=None):
     rclpy.init()
-    n = BallTracker("camera/image_raw")
+    n = ClickTracker("camera/image_raw")
     rclpy.spin(n)
     rclpy.shutdown()
 

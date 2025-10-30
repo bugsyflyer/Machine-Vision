@@ -3,9 +3,13 @@
 <package format="3">
   <name>click_to_follow</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Displays an image and commands a neato to follow an object the user clicks</description>
   <maintainer email="136553218+f-noble@users.noreply.github.com">f-noble</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
+
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

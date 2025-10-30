@@ -15,8 +15,8 @@ setup(
     zip_safe=True,
     maintainer='f-noble',
     maintainer_email='136553218+f-noble@users.noreply.github.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='Displays an image and commands a neato to follow an object the user clicks',
+    license='MIT',
     extras_require={
         'test': [
             'pytest',

@@ -66,7 +66,6 @@ matches = sorted(matches, key = lambda x:x.distance)
 # Draw first 10 matches.
 img3 = cv2.drawMatches(image,keypoints,image_new,keypoints_2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-plt.imshow(img3),plt.show()
 
 #find center
 list_keypoints_2 = []
@@ -90,5 +89,9 @@ mask = np.all(np.abs(points_array - median) / (mad + 1e-6) < threshold, axis=1)
 
 filtered_points = points_array[mask]
 mean_point = np.mean(filtered_points, axis=0)
-
 print(mean_point)
+
+
+cv2.circle(img3, (image.shape[1]+int(mean_point[0]), int(mean_point[1])), 5, (0,0,255), thickness=4)
+
+plt.imshow(img3),plt.show()
