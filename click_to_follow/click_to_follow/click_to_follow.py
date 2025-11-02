@@ -43,9 +43,6 @@ class ClickTracker(Node):
             issues with single threaded executors in ROS2. 
             """
         cv2.namedWindow('video_window')
-        cv2.namedWindow('binary_window')
-        cv2.namedWindow('image_info')
-
 
         # Reference: How to add a slider bar
         # needs a callback function like self.set_red_lower_bound to change value of slider
@@ -59,23 +56,18 @@ class ClickTracker(Node):
     def process_mouse_event(self, event, x,y,flags,param):
         """ Process mouse events so that you can see the color values
             associated with a particular pixel in the camera images """
-        # scroll event for rendering pixel data
-        self.image_info_window = 255*np.ones((500,500,3))
-        cv2.putText(self.image_info_window,
-                    'Color (b=%d,g=%d,r=%d)' % (self.cv_image[y,x,0], self.cv_image[y,x,1], self.cv_image[y,x,2]),
-                    (5,50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0,0,0))
-        
+      
         # click event for controlling vehicle motion
         if event == cv2.EVENT_LBUTTONDOWN:
             self.should_move = not(self.should_move)
+            # TODO: Save position of mouse click
 
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function 
         if not self.cv_image is None:
-            self.binary_image = np.zeros((self.cv_image.shape[0], self.cv_image.shape[1]))
+            # TODO: Get mean/center stuff here
+            # call function, passing in image
+            # set the center
             self.center_x, self.center_y = 20, 60
             # normalize self.center_x
             norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]
@@ -86,9 +78,6 @@ class ClickTracker(Node):
                 msg_cmd.angular.z = -norm_x_pose
                 self.pub.publish(msg_cmd)
             cv2.imshow('video_window', self.cv_image)
-            cv2.imshow('binary_window', self.binary_image)
-            if hasattr(self, 'image_info_window'):
-                cv2.imshow('image_info', self.image_info_window)
             cv2.waitKey(5)
 
 if __name__ == '__main__':
