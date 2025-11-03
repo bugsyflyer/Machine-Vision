@@ -64,10 +64,8 @@ class ClickTracker(Node):
 
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function 
-        if not self.cv_image is None:
-            # TODO: Get mean/center stuff here
-            # call function, passing in image
-            # set the center
+        if not self.cv_image is None and self.should_move:
+            # TODO: calculate and visualize the center of the "new" keypoints (most updated frame)
             self.center_x, self.center_y = 20, 60
             # normalize self.center_x
             norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]

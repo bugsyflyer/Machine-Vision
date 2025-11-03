@@ -37,7 +37,7 @@ output_image = cv2.drawKeypoints(image, keypoints, None, color=(255, 255, 0), fl
 # Display the original image with keypoints marked
 plt.figure(figsize = (10, 8))
 plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
-plt.imshow(keypoint_detect_mask) # show where on image stuff is being selected
+#plt.imshow(keypoint_detect_mask) # show where on image stuff is being selected
 plt.title('ORB Feature Detection')
 plt.show()
 print("done plotting")
