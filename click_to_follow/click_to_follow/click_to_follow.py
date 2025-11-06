@@ -7,6 +7,7 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from geometry_msgs.msg import Twist
+from matplotlib import pyplot as plt
 
 class ClickTracker(Node):
     """ The ClickTracker is a Python object that encompasses a ROS node that
@@ -25,10 +26,11 @@ class ClickTracker(Node):
         self.create_subscription(Image, image_topic, self.process_image, 10)
         
         self.pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.center_x = 0.
-        self.center_y = 0.
+        self.center_x = None
+        self.center_y = None
         self.should_move = False
         self.old_image = None
+        self.downscaling_factor = 4
 
         thread = Thread(target=self.loop_wrapper)
         thread.start()
@@ -39,13 +41,14 @@ class ClickTracker(Node):
         if self.should_move:
             old_image = self.cv_image
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        self.cv_image = cv2.resize(self.cv_image,(self.cv_image.shape[1]//self.downscaling_factor,self.cv_image.shape[0]//self.downscaling_factor))
 
     def loop_wrapper(self):
         """ This function takes care of calling the run_loop function repeatedly.
             We are using a separate thread to run the loop_wrapper to work around
             issues with single threaded executors in ROS2. 
             """
-        cv2.namedWindow('video_window')
+        cv2.namedWindow('video_window',cv2.WINDOW_NORMAL)
 
         # Reference: How to add a slider bar
         # needs a callback function like self.set_red_lower_bound to change value of slider
@@ -64,30 +67,43 @@ class ClickTracker(Node):
         if event == cv2.EVENT_LBUTTONDOWN:
             self.should_move = not(self.should_move)
             # TODO: Save position of mouse click
+            if self.should_move:
+                self.center_x = x
+                self.center_y = y
+                print("clicked on: x:",x," y:",y)
+                # later on we can make the whole thing reset
+                
 
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function 
         if not self.cv_image is None and self.should_move:
             # TODO: calculate and visualize the center of the "new" keypoints (most updated frame)
-            self.center_x, self.center_y = 20, 60
+            #self.center_x, self.center_y = 20, 60
             # normalize self.center_x
             norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]
             # create message pose (stopped, else move towards target)
             msg_cmd = Twist()
             if self.should_move is True:
-                msg_cmd.linear.x = 0.1
+                img_with_drawn_keypoints = self.get_keypoints(self.cv_image)
+                msg_cmd.linear.x = 0.05
                 msg_cmd.angular.z = -norm_x_pose
                 self.pub.publish(msg_cmd)
+                
+            #cv2.imshow('video_window', self.cv_image)
+            cv2.imshow('video_window', img_with_drawn_keypoints)
+            cv2.waitKey(5)
+        elif not self.cv_image is None:
             cv2.imshow('video_window', self.cv_image)
             cv2.waitKey(5)
+            
 
-    def get_keypoints(self):
+    def get_keypoints(self, image):
         # Create mask around area near object
         keypoint_detect_mask = np.zeros((image.shape[0], image.shape[1]), np.uint8)
         # wider circle with lower value corresponding to less keypoints far from the point given
-        cv2.circle(keypoint_detect_mask, (30 + new_width//16, -90 + new_height//4), 400, 20, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), 400, 20, thickness=-1)
         # smaller circle with high chance of giving keypoints close to the click
-        cv2.circle(keypoint_detect_mask, (30 + new_width//16, - 90 + new_height//4), 90, 255, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), 50, 255, thickness=-1)
         print(keypoint_detect_mask.shape)
         # Convert the image to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -102,7 +118,7 @@ class ClickTracker(Node):
 
         # Draw keypoints on the image
         output_image = cv2.drawKeypoints(image, keypoints, None, color=(255, 255, 0), flags=0)
-
+        return output_image
         # Display the original image with keypoints marked
         plt.figure(figsize = (10, 8))
         plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
@@ -112,7 +128,7 @@ class ClickTracker(Node):
         print("done plotting")
 
         print("Starting keypoint matching")
-
+        return
         # Load next image
         raw_new_img = cv2.imread("../media/human_follow_3.jpg")
         assert raw_new_img is not None, "file could not be read"
