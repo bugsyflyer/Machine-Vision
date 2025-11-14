@@ -3,7 +3,7 @@ import rclpy
 from threading import Thread
 from rclpy.node import Node
 import time
-from neato2_interfaces.msg import Bump
+from neato2_interfaces.msg import Bump # detect if robot has run into something
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
@@ -16,30 +16,33 @@ class ClickTracker(Node):
         can process images from the camera and detect a (potentially) moving
         object selected through clicks. The node will issue motor commands to
         move forward while keeping the object in the center of the camera's
-        field of view.
+        field of view. The robot stops when it runs into something, likely the object it is tracking. 
         """
 
     def __init__(self, image_topic):
-        """ Initialize the ball tracker """
-        super().__init__('ball_tracker')
+        """ Initialize the object tracker """
+        super().__init__('object_tracker')
         self.cv_image = None                        # the latest image from the camera
         self.bridge = CvBridge()                    # used to convert ROS messages to OpenCV
 
         self.create_subscription(Image, image_topic, self.process_image,10)
         self.bump_state = False
-        self.create_subscription(Bump,"bump",self.process_bump,10)
+        self.create_subscription(Bump,"bump",self.process_bump,10) # if robot has hit something
         
-        self.pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.pub = self.create_publisher(Twist, 'cmd_vel', 10) #command robot movement
+        # where on image object is
         self.center_x = None
         self.center_y = None
+        
         self.should_move = False
         self.old_image = None
-        self.downscaling_factor = 4
+        self.downscaling_factor = 4 # reduce image resolution for processing speed
+        # ORB keypoints
         self.keypoints = None
         self.old_keypoints = None
         self.descriptors = None
         self.old_descriptors = None
-        self.frame = False
+        self.frame = False # For emulating neato's low framerate
 
         thread = Thread(target=self.loop_wrapper)
         thread.start()
@@ -47,23 +50,26 @@ class ClickTracker(Node):
 
     def process_image(self, msg):
         """ Process image messages from ROS and stash them in an attribute
-            called cv_image for subsequent processing """
-        # emulate neato framerate:
+            called cv_image for subsequent processing. Save the previous image/keypoints.
+            """
+        # emulate low neato framerate
         if (random.randint(1,10) != 2):
             return
         print("frame")
         self.frame = True
-        
+
+        # downsize images
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.cv_image = cv2.resize(self.cv_image,(self.cv_image.shape[1]//self.downscaling_factor,self.cv_image.shape[0]//self.downscaling_factor))
 
         if self.should_move:
+            # Save image and keypoints from previous image
             self.old_image = self.cv_image
             self.old_keypoints = self.keypoints
             self.old_descriptors = self.descriptors
 
     def process_bump(self, msg):
-        "determine whether the robot has run into anything"
+        "Determine whether the robot has run into anything"
         if (msg.left_front == 1 or \
             msg.right_front == 1 or \
             msg.right_side == 1 or \
@@ -77,10 +83,6 @@ class ClickTracker(Node):
             issues with single threaded executors in ROS2. 
             """
         cv2.namedWindow('video_window',cv2.WINDOW_NORMAL)
-
-        # Reference: How to add a slider bar
-        # needs a callback function like self.set_red_lower_bound to change value of slider
-        # cv2.createTrackbar('red lower bound', 'binary_window', self.red_lower_bound, 255, self.set_red_lower_bound)
         
         cv2.setMouseCallback('video_window', self.process_mouse_event)
         while True:
@@ -88,44 +90,44 @@ class ClickTracker(Node):
             time.sleep(0.1)
 
     def process_mouse_event(self, event, x,y,flags,param):
-        """ Process mouse events so that you can see the color values
-            associated with a particular pixel in the camera images """
+        """ Process mouse events so the user can click on an object in the image."""
       
         # click event for controlling vehicle motion
         if event == cv2.EVENT_LBUTTONDOWN:
             self.should_move = not(self.should_move)
-            # TODO: Save position of mouse click
             if self.should_move:
+                # save click location as first guess of object location
                 self.center_x = x
                 self.center_y = y
                 print("clicked on: x:",x," y:",y)
-                # later on we can make the whole thing reset
                 
 
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function
-        if self.frame == False:
+        if self.frame == False: # low framerate emulation
             return
         self.frame = False
+        
         if (not self.cv_image is None) and self.should_move:
-            # TODO: calculate and visualize the center of the "new" keypoints (most updated frame)
-            #self.center_x, self.center_y = 20, 60
             # normalize self.center_x
             norm_x_pose = (self.center_x - self.cv_image.shape[1]/2) / self.cv_image.shape[1]
             # create message pose (stopped, else move towards target)
             msg_cmd = Twist()
             if self.should_move is True:
                 if self.old_keypoints is not None:
+                    # Do keypoint matching to update the object location guess
                     self.get_matching_keypoints(self.cv_image)
                     self.get_mean_of_keypoints()
                 img_with_drawn_keypoints = self.get_surrounding_keypoints(self.cv_image)
+
+                # Command robot movement based on x of object location
                 msg_cmd.linear.x = 0.05
                 msg_cmd.angular.z = -norm_x_pose/2
                 if self.bump_state is True:
                     msg_cmd = Twist()
                 self.pub.publish(msg_cmd)
-                
-            #cv2.imshow('video_window', self.cv_image)
+
+            # Display keypoints 
             cv2.imshow('video_window', img_with_drawn_keypoints)
             cv2.waitKey(5)
         elif not self.cv_image is None:
@@ -134,6 +136,8 @@ class ClickTracker(Node):
             
 
     def get_surrounding_keypoints(self, image):
+        """ Find keypoints that are near the current guess of the object on the inputted image. Return an image with these keypoints drawn on it
+        """
         # Create mask around area near object
         keypoint_detect_mask = np.zeros((image.shape[0], image.shape[1]), np.uint8)
         # wider circle with lower value corresponding to less keypoints far from the point given
@@ -149,7 +153,6 @@ class ClickTracker(Node):
 
         # Detect keypoints and compute descriptors using the mask to determine where to sample keypoints
         keypoints, descriptors = orb.detectAndCompute(gray, keypoint_detect_mask)
-        #print(orb.detectAndCompute(gray, keypoint_detect_mask))
         if descriptors is None:
             print("No keypoints detected")
             self.keypoints = self.old_keypoints
@@ -157,30 +160,18 @@ class ClickTracker(Node):
             return image
         self.keypoints = keypoints
         self.descriptors = descriptors
-        # print("keypoints:",keypoints)
-        #print(gray)
-        #print(keypoint_detect_mask)
 
         print("Algorithm done")
 
         # Draw keypoints on the image
         output_image = cv2.drawKeypoints(image, keypoints, None, color=(255, 255, 0), flags=0)
         return output_image
-        # Display the original image with keypoints marked
-        plt.figure(figsize = (10, 8))
-        plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
-        #plt.imshow(keypoint_detect_mask) # show where on image stuff is being selected
-        plt.title('ORB Feature Detection')
-        plt.show()
-        print("done plotting")
+        
 
-        print("Starting keypoint matching")
-        return
-        # Load next image
-        raw_new_img = cv2.imread("../media/human_follow_3.jpg")
-        assert raw_new_img is not None, "file could not be read"
-        image_new = cv2.resize(raw_new_img, (new_width, new_height))
     def get_matching_keypoints(self, image):
+        """Match the keypoints found on the provided image that were found in the previous image. Provide a list of the best matches. 
+        """
+        # Convert image to grayscale
         gray_new = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # Create the ORB detector object
@@ -202,15 +193,12 @@ class ClickTracker(Node):
         best_descriptors = [descriptors_2[match.trainIdx] for match in matches[:60]]
         self.keypoints = best_keypoints
         self.descriptors = best_descriptors
-        
-
-        # Draw first 10 matches.
-        # img3 = cv2.drawMatches(image,keypoints,image_new,keypoints_2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         return
-
-        #find center
-        list_kp2 = [keypoints_2[item.trainIdx].pt for item in matches[:10]]
+    
+        
     def get_mean_of_keypoints(self):
+        """Find mean location of keypoints, ignoring outliers, and save as object location guess
+        """
         points = []
         print(self.keypoints)
 
@@ -218,7 +206,6 @@ class ClickTracker(Node):
             points.append([point.pt[0], point.pt[1]])
 
         points_array = np.array(points)
-        print(points_array)
 
         # median and Median Absolute Deviation
         median = np.median(points_array, axis=0)
@@ -232,13 +219,12 @@ class ClickTracker(Node):
         filtered_points = points_array[mask]
         mean_point = np.mean(filtered_points, axis=0)
         print(mean_point)
+        # Set mean point
         self.center_x = int(mean_point[0])
         self.center_y = int(mean_point[1])
 
 
-        # cv2.circle(img3, (image.shape[1]+int(mean_point[0]), int(mean_point[1])), 5, (0,0,255), thickness=4)
-
-        # plt.imshow(img3),plt.show()
+# Run ROS node
 
 if __name__ == '__main__':
     node = ClickTracker("/camera/image_raw")
