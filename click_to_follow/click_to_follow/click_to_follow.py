@@ -1,4 +1,4 @@
-from telnetlib import OLD_ENVIRON
+import random
 import rclpy
 from threading import Thread
 from rclpy.node import Node
@@ -36,13 +36,21 @@ class ClickTracker(Node):
         self.old_keypoints = None
         self.descriptors = None
         self.old_descriptors = None
+        self.frame = False
 
         thread = Thread(target=self.loop_wrapper)
         thread.start()
+        self.pub.publish(Twist())
 
     def process_image(self, msg):
         """ Process image messages from ROS and stash them in an attribute
             called cv_image for subsequent processing """
+        # emulate neato framerate:
+        if (random.randint(1,10) != 2):
+            return
+        print("frame")
+        self.frame = True
+        
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.cv_image = cv2.resize(self.cv_image,(self.cv_image.shape[1]//self.downscaling_factor,self.cv_image.shape[0]//self.downscaling_factor))
 
@@ -83,7 +91,10 @@ class ClickTracker(Node):
                 
 
     def run_loop(self):
-        # NOTE: only do cv2.imshow and cv2.waitKey in this function 
+        # NOTE: only do cv2.imshow and cv2.waitKey in this function
+        if self.frame == False:
+            return
+        self.frame = False
         if (not self.cv_image is None) and self.should_move:
             # TODO: calculate and visualize the center of the "new" keypoints (most updated frame)
             #self.center_x, self.center_y = 20, 60
@@ -92,11 +103,12 @@ class ClickTracker(Node):
             # create message pose (stopped, else move towards target)
             msg_cmd = Twist()
             if self.should_move is True:
-                if self.old_image is not None:
+                if self.old_keypoints is not None:
                     self.get_matching_keypoints(self.cv_image)
+                    self.get_mean_of_keypoints()
                 img_with_drawn_keypoints = self.get_surrounding_keypoints(self.cv_image)
                 msg_cmd.linear.x = 0.05
-                msg_cmd.angular.z = -norm_x_pose
+                msg_cmd.angular.z = -norm_x_pose/2
                 self.pub.publish(msg_cmd)
                 
             #cv2.imshow('video_window', self.cv_image)
@@ -111,9 +123,9 @@ class ClickTracker(Node):
         # Create mask around area near object
         keypoint_detect_mask = np.zeros((image.shape[0], image.shape[1]), np.uint8)
         # wider circle with lower value corresponding to less keypoints far from the point given
-        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//3, 20, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//6, 30, thickness=-1)
         # smaller circle with high chance of giving keypoints close to the click
-        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//8, 255, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//12, 255, thickness=-1)
         print(keypoint_detect_mask.shape)
         # Convert the image to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -123,8 +135,17 @@ class ClickTracker(Node):
 
         # Detect keypoints and compute descriptors using the mask to determine where to sample keypoints
         keypoints, descriptors = orb.detectAndCompute(gray, keypoint_detect_mask)
+        #print(orb.detectAndCompute(gray, keypoint_detect_mask))
+        if descriptors is None:
+            print("No keypoints detected")
+            self.keypoints = self.old_keypoints
+            self.descriptors = self.old_descriptors
+            return image
         self.keypoints = keypoints
         self.descriptors = descriptors
+        # print("keypoints:",keypoints)
+        #print(gray)
+        #print(keypoint_detect_mask)
 
         print("Algorithm done")
 
@@ -162,9 +183,9 @@ class ClickTracker(Node):
         
         # Sort them in the order of their distance.
         matches = sorted(matches, key = lambda x:x.distance)
-        best_keypoints = [keypoints_2[match.trainIdx] for match in matches[:30]]
+        best_keypoints = [keypoints_2[match.trainIdx] for match in matches[:60]]
 
-        best_descriptors = [descriptors_2[match.trainIdx] for match in matches[:30]]
+        best_descriptors = [descriptors_2[match.trainIdx] for match in matches[:60]]
         self.keypoints = best_keypoints
         self.descriptors = best_descriptors
         
@@ -175,13 +196,15 @@ class ClickTracker(Node):
 
         #find center
         list_kp2 = [keypoints_2[item.trainIdx].pt for item in matches[:10]]
-
+    def get_mean_of_keypoints(self):
         points = []
+        print(self.keypoints)
 
-        for point in list_kp2:
-            points.append([point[0], point[1]])
+        for point in self.keypoints:
+            points.append([point.pt[0], point.pt[1]])
 
         points_array = np.array(points)
+        print(points_array)
 
         # median and Median Absolute Deviation
         median = np.median(points_array, axis=0)
@@ -195,11 +218,13 @@ class ClickTracker(Node):
         filtered_points = points_array[mask]
         mean_point = np.mean(filtered_points, axis=0)
         print(mean_point)
+        self.center_x = int(mean_point[0])
+        self.center_y = int(mean_point[1])
 
 
-        cv2.circle(img3, (image.shape[1]+int(mean_point[0]), int(mean_point[1])), 5, (0,0,255), thickness=4)
+        # cv2.circle(img3, (image.shape[1]+int(mean_point[0]), int(mean_point[1])), 5, (0,0,255), thickness=4)
 
-        plt.imshow(img3),plt.show()
+        # plt.imshow(img3),plt.show()
 
 if __name__ == '__main__':
     node = ClickTracker("/camera/image_raw")
