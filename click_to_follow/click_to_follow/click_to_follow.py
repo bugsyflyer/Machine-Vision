@@ -63,11 +63,12 @@ class ClickTracker(Node):
             self.old_descriptors = self.descriptors
 
     def process_bump(self, msg):
-        "determine whether the robot has run into anything" 
-        self.bump_state = (msg.left_front == 1 or \
+        "determine whether the robot has run into anything"
+        if (msg.left_front == 1 or \
             msg.right_front == 1 or \
             msg.right_side == 1 or \
-            msg.left_side == 1)
+            msg.left_side == 1):
+            self.bump_state = True
         
 
     def loop_wrapper(self):
