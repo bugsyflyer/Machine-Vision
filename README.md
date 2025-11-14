@@ -14,9 +14,26 @@ Similar to this was a Click-based Segmentation Implementation from a paper with 
 There were also a liteny of semantic segmentation algorithms we found that used Pytorch, which does not play well with ROS2.
 We decided on Keypoint Matching with an OpenCV ORB implementation.
 
+## Code Architecture:
+This project uses ROS2 in Python with OpenCV for computer vision. ORB is the object detection method.
+
+### Initialization()
+
+### Main loop()
+
+### process_mouse_event()
+
+### get_surrounding_keypoints()
+
+### get_matching_keypoints()
+
+### get_mean_of_keypoints()
+
+
+
 ## Challenges:
 Our first and most pervasive issue was choosing an algorithm. It was extremely time consuming and often demoralizing. We would get attached to a method or algorithm only to find that it wouldn't work for one reason or another. We fully implemented multiple algorithms just for then to not work right for whatever reason. We had less time than most on this project due to FWOP, so every failed implementation drew us closer and closer to a project disaster. We have also had trouble committing to an alorithm because we got so used to the search-and-fail loop.
 Our other major challenge was scheduling. We have rather conflicting schedules which led us to only meeting in class or for multiple hours straight very infrequently. We are both in FWOP doing Set and Tech week, which meant that not only would we be unavailable most hours during tech week, but for the prior week as well. We tried to deal with this by working a ton on the project right from the outset, meeting as often and as long as we possible could. While we made a great deal of progress before FWOP really started, searching for an algorithm took a lot longer than intended and we had hoped to finish the whole project other than the write up before tech week.
 
-##Future Steps and Lessons:
-Our method is not very accurate. It just gets keypoints in the area near a click and does not determine if the keypoints are on the "correct" object and so the neato follows a general area rather than a specific semantic object. We also spent very little time debugging so our project almost certainly does not work quite as intended.
+## Improvements:
+Our method is not very accurate. It just gets keypoints in the area near a click and does not determine if the keypoints are on the "correct" object and so the neato follows a general area rather than a specific semantic object. We also spent very little time debugging so our project almost certainly does not work quite as intended. There are a few things we could do to improve this. Removing the rotational aspect of the orb keypoints would make the keypoints are more accurate to the scene. Adding an offset based on where the keypoints generate compared to the click to make the keypoints actually generate around the object. Better visualization would let us know what the code is actually doing and aid in debugging. Better "end" detection than just the bump sensor because the can be triggered by running into anything, not just the correct object.
