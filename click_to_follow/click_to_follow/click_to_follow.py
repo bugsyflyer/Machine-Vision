@@ -3,6 +3,7 @@ import rclpy
 from threading import Thread
 from rclpy.node import Node
 import time
+from neato2_interfaces.msg import Bump
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
@@ -24,7 +25,9 @@ class ClickTracker(Node):
         self.cv_image = None                        # the latest image from the camera
         self.bridge = CvBridge()                    # used to convert ROS messages to OpenCV
 
-        self.create_subscription(Image, image_topic, self.process_image, 10)
+        self.create_subscription(Image, image_topic, self.process_image,10)
+        self.bump_state = False
+        self.create_subscription(Bump,"bump",self.process_bump,10)
         
         self.pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.center_x = None
@@ -58,6 +61,14 @@ class ClickTracker(Node):
             self.old_image = self.cv_image
             self.old_keypoints = self.keypoints
             self.old_descriptors = self.descriptors
+
+    def process_bump(self, msg):
+        "determine whether the robot has run into anything" 
+        self.bump_state = (msg.left_front == 1 or \
+            msg.right_front == 1 or \
+            msg.right_side == 1 or \
+            msg.left_side == 1)
+        
 
     def loop_wrapper(self):
         """ This function takes care of calling the run_loop function repeatedly.
@@ -109,6 +120,8 @@ class ClickTracker(Node):
                 img_with_drawn_keypoints = self.get_surrounding_keypoints(self.cv_image)
                 msg_cmd.linear.x = 0.05
                 msg_cmd.angular.z = -norm_x_pose/2
+                if self.bump_state is True:
+                    msg_cmd = Twist()
                 self.pub.publish(msg_cmd)
                 
             #cv2.imshow('video_window', self.cv_image)
