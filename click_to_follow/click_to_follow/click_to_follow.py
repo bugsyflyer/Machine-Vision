@@ -1,3 +1,4 @@
+from telnetlib import OLD_ENVIRON
 import rclpy
 from threading import Thread
 from rclpy.node import Node
@@ -31,6 +32,10 @@ class ClickTracker(Node):
         self.should_move = False
         self.old_image = None
         self.downscaling_factor = 4
+        self.keypoints = None
+        self.old_keypoints = None
+        self.descriptors = None
+        self.old_descriptors = None
 
         thread = Thread(target=self.loop_wrapper)
         thread.start()
@@ -38,10 +43,13 @@ class ClickTracker(Node):
     def process_image(self, msg):
         """ Process image messages from ROS and stash them in an attribute
             called cv_image for subsequent processing """
-        if self.should_move:
-            old_image = self.cv_image
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.cv_image = cv2.resize(self.cv_image,(self.cv_image.shape[1]//self.downscaling_factor,self.cv_image.shape[0]//self.downscaling_factor))
+
+        if self.should_move:
+            self.old_image = self.cv_image
+            self.old_keypoints = self.keypoints
+            self.old_descriptors = self.descriptors
 
     def loop_wrapper(self):
         """ This function takes care of calling the run_loop function repeatedly.
@@ -76,7 +84,7 @@ class ClickTracker(Node):
 
     def run_loop(self):
         # NOTE: only do cv2.imshow and cv2.waitKey in this function 
-        if not self.cv_image is None and self.should_move:
+        if (not self.cv_image is None) and self.should_move:
             # TODO: calculate and visualize the center of the "new" keypoints (most updated frame)
             #self.center_x, self.center_y = 20, 60
             # normalize self.center_x
@@ -84,7 +92,9 @@ class ClickTracker(Node):
             # create message pose (stopped, else move towards target)
             msg_cmd = Twist()
             if self.should_move is True:
-                img_with_drawn_keypoints = self.get_keypoints(self.cv_image)
+                if self.old_image is not None:
+                    self.get_matching_keypoints(self.cv_image)
+                img_with_drawn_keypoints = self.get_surrounding_keypoints(self.cv_image)
                 msg_cmd.linear.x = 0.05
                 msg_cmd.angular.z = -norm_x_pose
                 self.pub.publish(msg_cmd)
@@ -97,13 +107,13 @@ class ClickTracker(Node):
             cv2.waitKey(5)
             
 
-    def get_keypoints(self, image):
+    def get_surrounding_keypoints(self, image):
         # Create mask around area near object
         keypoint_detect_mask = np.zeros((image.shape[0], image.shape[1]), np.uint8)
         # wider circle with lower value corresponding to less keypoints far from the point given
-        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), 400, 20, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//3, 20, thickness=-1)
         # smaller circle with high chance of giving keypoints close to the click
-        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), 50, 255, thickness=-1)
+        cv2.circle(keypoint_detect_mask, (self.center_x, self.center_y), image.shape[0]//8, 255, thickness=-1)
         print(keypoint_detect_mask.shape)
         # Convert the image to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -113,6 +123,8 @@ class ClickTracker(Node):
 
         # Detect keypoints and compute descriptors using the mask to determine where to sample keypoints
         keypoints, descriptors = orb.detectAndCompute(gray, keypoint_detect_mask)
+        self.keypoints = keypoints
+        self.descriptors = descriptors
 
         print("Algorithm done")
 
@@ -133,10 +145,12 @@ class ClickTracker(Node):
         raw_new_img = cv2.imread("../media/human_follow_3.jpg")
         assert raw_new_img is not None, "file could not be read"
         image_new = cv2.resize(raw_new_img, (new_width, new_height))
+    def get_matching_keypoints(self, image):
+        gray_new = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        gray_new = cv2.cvtColor(image_new, cv2.COLOR_BGR2GRAY)
+        # Create the ORB detector object
+        orb = cv2.ORB_create(nfeatures=500)
 
-    def visualize_keypoints(self):
         # Create keypoints on new image
         keypoints_2, descriptors_2 = orb.detectAndCompute(gray_new, None)
 
@@ -144,14 +158,20 @@ class ClickTracker(Node):
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         
         # Match descriptors.
-        matches = bf.match(descriptors,descriptors_2)
+        matches = bf.match(self.descriptors,descriptors_2)
         
         # Sort them in the order of their distance.
         matches = sorted(matches, key = lambda x:x.distance)
+        best_keypoints = [keypoints_2[match.trainIdx] for match in matches[:30]]
+
+        best_descriptors = [descriptors_2[match.trainIdx] for match in matches[:30]]
+        self.keypoints = best_keypoints
+        self.descriptors = best_descriptors
+        
 
         # Draw first 10 matches.
-        img3 = cv2.drawMatches(image,keypoints,image_new,keypoints_2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-
+        # img3 = cv2.drawMatches(image,keypoints,image_new,keypoints_2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        return
 
         #find center
         list_kp2 = [keypoints_2[item.trainIdx].pt for item in matches[:10]]
