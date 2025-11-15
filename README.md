@@ -18,16 +18,54 @@ We decided on Keypoint Matching with an OpenCV ORB implementation.
 This project uses ROS2 in Python with OpenCV for computer vision. ORB is the object detection method.
 
 ### Initialization()
-
-### Main loop()
+This function initializes all the necessary variables and creates a subscription to Image and Bump. It creates a publisher for Twist.
 
 ### process_mouse_event()
+Processes click events. If the mouse has been clicked, then the image recognition and movement process should begin. This function saves the x,y position of the mouse click to be used later on.
+
+### process_image()
+Processes image messages from ROS by assigning the latest image to an attribute called cv_image. In order to emulate the neato framerate, we randomly generate a number 1-10 and if it does not equal 2, we use the frame. This discards 90% of our frames with some irregularity just like a Neato.
+```Python
+if (random.randint(1,10) != 2):
+            return
+```
+An if-statement check whether the Neato should be moving or not. If the Neato should be moving, the Neato should be keeping track of the current image and the last image it saw.
+
+### process_bump()
+This handles the bump subscription which acts as the end condition. If the neato bumps into something, that means it reached the target object (if all goes according to plan).
+
+### Main loop()
+Each loop checks if the robot should move. If it should, the following series of functions are called to determine where the robot should go. From this, the physical movement of the Neato is determined and published as a Twist command.
 
 ### get_surrounding_keypoints()
+Creates a concentric mask around the clicked point and runs ORB using this mask so that the keypoints generate only around the desired object. If no keypoints are found, it just uses the previous set of keypoints and returns the image. Otherwise, it returns image with keypoints drawn
 
 ### get_matching_keypoints()
+Matches the previous keypoints with the current frame.
+```Python
+bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+matches = bf.match(self.descriptors, descriptors_2)
+```
+This code sorts by smallest Hamming distance, takes 60 best matches, saves matched keypoints to self.keypoints.
 
 ### get_mean_of_keypoints()
+This function computes a median-MAD filtered centroid. It gets the mean and standard deviation of the points, then uses the Median Absolute Deviation followed by a threshold of 3 to determine which points to keep. The mean of those points is then determined.
+```Python
+       # median and Median Absolute Deviation
+        median = np.median(points_array, axis=0)
+
+        mad = np.median(np.abs(points_array - median), axis=0)
+        threshold = 3.0
+
+        #makes boolean array
+        mask = np.all(np.abs(points_array - median) / (mad + 1e-6) < threshold, axis=1)
+
+        filtered_points = points_array[mask]
+        mean_point = np.mean(filtered_points, axis=0)
+        print(mean_point)
+        self.center_x = int(mean_point[0])
+        self.center_y = int(mean_point[1])
+```
 
 
 
